@@ -3,8 +3,8 @@ package server
 import (
 	"net/http"
 
-	"github.com/supabase-community/scim-go/internal/memory"
 	"github.com/supabase-community/scim-go/pkg/core"
+	"github.com/supabase-community/scim-go/pkg/store/memory"
 )
 
 type Option[T any] func(T)
@@ -43,7 +43,7 @@ func WithBaseURL(baseURL string) Option[*Server] {
 	return func(s *Server) { s.baseURL = baseURL }
 }
 
-// WithMemory keeps the resources of every resource type without its own repository in m, from the memory package, so they can be exported and restored.
+// WithMemory keeps the resources of every resource type without its own repository in m, so they can be exported and restored.
 func WithMemory(m *memory.Memory) Option[*Server] {
 	return func(s *Server) { s.db = m }
 }

@@ -15,10 +15,14 @@ import (
 )
 
 var (
+	// ErrUnknownResourceType rejects an entry whose resource type has no store.
 	ErrUnknownResourceType = errors.New("memory: no store holds the resource type")
-	ErrDuplicateID         = errors.New("memory: two entries have the same id")
-	ErrNotUnique           = errors.New("memory: two entries share a unique value")
-	ErrMissingTarget       = errors.New("memory: a link targets an id without entry")
+	// ErrDuplicateID rejects two entries with the same id.
+	ErrDuplicateID = errors.New("memory: two entries have the same id")
+	// ErrNotUnique rejects two entries that share a value of a unique attribute, per RFC 7643, Section 7.
+	ErrNotUnique = errors.New("memory: two entries share a unique value")
+	// ErrMissingTarget rejects a link to an id without entry, per RFC 7643, Section 2.3.7.
+	ErrMissingTarget = errors.New("memory: a link targets an id without entry")
 )
 
 // Entry is one resource as the memory holds it: its body without id, meta and links, its links, and the times that make up its meta.

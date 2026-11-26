@@ -145,7 +145,7 @@ func TestRestoreRejectsInvalidEntries(t *testing.T) {
 }
 
 func newHandler(m *memory.Memory) http.Handler {
-	return server.New(basePath, core.NewServiceProviderConfig().Patching(),
+	return server.New(basePath, core.NewServiceProviderConfig().Patching().Filtering(protocol.DefaultLimits.MaxCount).Sorting().Versioning(),
 		server.WithMemory(m),
 		server.WithResource(server.
 			NewResource[*core.User]("User", "/Users", core.SchemaUser, core.UserAttributes()...).

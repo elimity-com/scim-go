@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/supabase-community/scim-go/internal/decode"
@@ -13,7 +14,7 @@ import (
 	"github.com/supabase-community/scim-go/pkg/store"
 )
 
-type memoryStore struct {
+type Store struct {
 	db         *Memory
 	location   string
 	schemas    core.Schemas
@@ -22,13 +23,13 @@ type memoryStore struct {
 	evaluator protocol.Evaluator[predicate]
 }
 
-func (s *memoryStore) List(_ context.Context, request *protocol.SearchRequest, references []store.Reference) ([]store.Record, int, error) {
+func (s *Store) List(_ context.Context, request *protocol.SearchRequest, references []store.Reference) ([]store.Record, int, error) {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	return query{s, request}.run(references)
 }
 
-func (s *memoryStore) Find(_ context.Context, id string, references []store.Reference) (store.Record, error) {
+func (s *Store) Find(_ context.Context, id string, references []store.Reference) (store.Record, error) {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	e, ok := s.db.entries.find(id, s.schemas.Base())
@@ -38,14 +39,14 @@ func (s *memoryStore) Find(_ context.Context, id string, references []store.Refe
 	return s.db.record(id, e, references), nil
 }
 
-func (s *memoryStore) Create(_ context.Context, doc store.Document) (store.Record, error) {
+func (s *Store) Create(_ context.Context, doc store.Document) (store.Record, error) {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	at := now()
 	return s.save(doc, entry{created: at, updated: at})
 }
 
-func (s *memoryStore) Update(_ context.Context, doc store.Document, version string) (store.Record, error) {
+func (s *Store) Update(_ context.Context, doc store.Document, version string) (store.Record, error) {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	current, err := s.locate(doc.ID, version)
@@ -55,7 +56,7 @@ func (s *memoryStore) Update(_ context.Context, doc store.Document, version stri
 	return s.save(doc, entry{created: current.created, updated: bumped(current.updated)})
 }
 
-func (s *memoryStore) Delete(_ context.Context, id, version string) error {
+func (s *Store) Delete(_ context.Context, id, version string) error {
 	s.db.mu.Lock()
 	defer s.db.mu.Unlock()
 	current, err := s.locate(id, version)
@@ -69,8 +70,34 @@ func (s *memoryStore) Delete(_ context.Context, id, version string) error {
 	return nil
 }
 
+// Entries returns every resource of the store's resource type, in no particular order, e.g. to pass to Load of a store of a later Memory.
+// It must not run while the Memory serves requests.
+func (s *Store) Entries() []Entry {
+	var all []Entry
+	for id, e := range s.db.entries {
+		if e.schema == s.schemas.Base() {
+			all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
+		}
+	}
+	return all
+}
+
+// Load adds the given entries as resources of the store's resource type. It trusts them: it does not check uniqueness or links.
+// It must not run while the Memory serves requests. On an error, it leaves the entries before the failing one loaded.
+func (s *Store) Load(entries []Entry) error {
+	for _, e := range entries {
+		body, err := decode.Object(e.Body)
+		if err != nil {
+			return fmt.Errorf("memory: entry %s: %w", e.ID, err)
+		}
+		loaded := entry{schema: s.schemas.Base(), owner: s, body: body, raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
+		s.put(e.ID, s.db.entries[e.ID], loaded, indexKeysOf(loaded, s.Fields))
+	}
+	return nil
+}
+
 // RFC 7644 Section 3.14: a non-empty version must match the stored one.
-func (s *memoryStore) locate(id, version string) (entry, error) {
+func (s *Store) locate(id, version string) (entry, error) {
 	e, ok := s.db.entries.find(id, s.schemas.Base())
 	if !ok || (version != "" && etag.Weak(e.updated) != version) {
 		return entry{}, store.ErrNoMatch
@@ -78,7 +105,7 @@ func (s *memoryStore) locate(id, version string) (entry, error) {
 	return e, nil
 }
 
-func (s *memoryStore) save(doc store.Document, next entry) (store.Record, error) {
+func (s *Store) save(doc store.Document, next entry) (store.Record, error) {
 	body, err := decode.Object(doc.Body)
 	if err != nil {
 		return store.Record{}, err
@@ -93,7 +120,7 @@ func (s *memoryStore) save(doc store.Document, next entry) (store.Record, error)
 	return s.db.record(doc.ID, next, doc.References), nil
 }
 
-func (s *memoryStore) verify(doc store.Document, before, next entry) ([]indexKey, error) {
+func (s *Store) verify(doc store.Document, before, next entry) ([]indexKey, error) {
 	if err := s.db.entries.checkLinks(doc.ID, before.links, doc.Links); err != nil {
 		return nil, err
 	}
@@ -104,11 +131,16 @@ func (s *memoryStore) verify(doc store.Document, before, next entry) ([]indexKey
 	return keys, nil
 }
 
-func (s *memoryStore) commit(doc store.Document, before, next entry, keys []indexKey) {
-	s.db.unique.remove(indexKeysOf(before, s.Fields))
+func (s *Store) commit(doc store.Document, before, next entry, keys []indexKey) {
 	changed := changedTargets(before.links, doc.Links)
-	s.db.inbound.relink(doc.ID, before.links, next.links)
-	s.db.entries[doc.ID] = next
+	s.put(doc.ID, before, next, keys)
 	s.db.entries.touch(changed)
-	s.db.unique.add(keys, doc.ID)
+}
+
+// put stores next under id in place of before, keeping the indexes in step.
+func (s *Store) put(id string, before, next entry, keys []indexKey) {
+	s.db.unique.remove(indexKeysOf(before, s.Fields))
+	s.db.inbound.relink(id, before.links, next.links)
+	s.db.entries[id] = next
+	s.db.unique.add(keys, id)
 }

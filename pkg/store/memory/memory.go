@@ -1,3 +1,4 @@
+// Package memory provides the in-memory store a server keeps its resources in by default.
 package memory
 
 import (
@@ -26,9 +27,9 @@ func New() *Memory {
 	}
 }
 
-func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
+func (m *Memory) Store(location string, schemas core.Schemas) *Store {
 	all := fields.New(schemas)
-	return &memoryStore{
+	return &Store{
 		db:         m,
 		location:   location,
 		schemas:    schemas,

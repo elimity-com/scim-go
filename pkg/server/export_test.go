@@ -1,8 +1,8 @@
 package server
 
 import (
-	"github.com/supabase-community/scim-go/internal/memory"
 	"github.com/supabase-community/scim-go/pkg/core"
+	"github.com/supabase-community/scim-go/pkg/store/memory"
 )
 
 var NewDatabase = memory.New

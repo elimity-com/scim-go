@@ -6,10 +6,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/supabase-community/scim-go/internal/memory"
 	"github.com/supabase-community/scim-go/pkg/core"
 	"github.com/supabase-community/scim-go/pkg/protocol"
 	"github.com/supabase-community/scim-go/pkg/scimerrors"
+	"github.com/supabase-community/scim-go/pkg/store/memory"
 )
 
 const DefaultMaxBodySize = 1 << 20

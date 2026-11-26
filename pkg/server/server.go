@@ -17,6 +17,7 @@ const DefaultMaxBodySize = 1 << 20
 type Server struct {
 	mux           *http.ServeMux
 	db            *memory.Memory
+	stores        map[string]*memory.Store
 	handler       http.Handler
 	authenticate  func(http.Handler) http.Handler
 	basePath      string
@@ -35,6 +36,7 @@ func New(basePath string, config *core.ServiceProviderConfig, options ...Option[
 	s := &Server{
 		mux:          mux,
 		db:           memory.New(),
+		stores:       map[string]*memory.Store{},
 		basePath:     basePath,
 		config:       config,
 		limits:       limitsFrom(config),
@@ -71,6 +73,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	r = withReporter(r, s.errorHandler)
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodySize)
 	s.handler.ServeHTTP(w, r)
+}
+
+// MemoryStore returns the in-memory store of the named resource type, e.g. to Load its resources before the server serves requests.
+// It reports false for a resource type with its own repository.
+func (s *Server) MemoryStore(resourceType string) (*memory.Store, bool) {
+	st, ok := s.stores[resourceType]
+	return st, ok
 }
 
 func (s *Server) handle(fn func(http.ResponseWriter, *http.Request) error) http.HandlerFunc {

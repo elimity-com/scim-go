@@ -3,12 +3,9 @@ package memory
 
 import (
 	"encoding/json"
-	"fmt"
 	"slices"
 	"sync"
-	"time"
 
-	"github.com/supabase-community/scim-go/internal/decode"
 	"github.com/supabase-community/scim-go/internal/etag"
 	"github.com/supabase-community/scim-go/internal/fields"
 	"github.com/supabase-community/scim-go/pkg/core"
@@ -20,15 +17,6 @@ type Memory struct {
 	entries entries
 	unique  uniqueIndex
 	inbound inbound
-}
-
-// Entry is one resource of a Store: its body without id and meta, its links, and the times its meta derives from.
-type Entry struct {
-	ID      string
-	Body    json.RawMessage
-	Links   []store.Link
-	Created time.Time
-	Updated time.Time
 }
 
 func New() *Memory {
@@ -49,36 +37,6 @@ func (m *Memory) Store(location string, schemas core.Schemas) *Store {
 		Fields:     all,
 		evaluator:  newEvaluator(all, schemas),
 	}
-}
-
-// Entries returns every resource of the store's resource type, in no particular order, e.g. to pass to Load of a store of a later Memory.
-// It must not run while the Memory serves requests.
-func (s *Store) Entries() []Entry {
-	var all []Entry
-	for id, e := range s.db.entries {
-		if e.schema == s.schemas.Base() {
-			all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
-		}
-	}
-	return all
-}
-
-// Load adds the given entries as resources of the store's resource type. It trusts them: it does not check uniqueness or links.
-// It must not run while the Memory serves requests.
-func (s *Store) Load(entries []Entry) error {
-	bodies := make([]core.Object, len(entries))
-	for i, e := range entries {
-		body, err := decode.Object(e.Body)
-		if err != nil {
-			return fmt.Errorf("memory: entry %s: %w", e.ID, err)
-		}
-		bodies[i] = body
-	}
-	for i, e := range entries {
-		loaded := entry{schema: s.schemas.Base(), owner: s, body: bodies[i], raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
-		s.put(e.ID, s.db.entries[e.ID], loaded, indexKeysOf(loaded, s.Fields))
-	}
-	return nil
 }
 
 // RFC 7643 Section 2.3.7: a service provider MAY enforce referential integrity.

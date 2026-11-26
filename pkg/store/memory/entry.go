@@ -17,3 +17,12 @@ type entry struct {
 	created time.Time
 	updated time.Time
 }
+
+// Entry is one resource of a Store: its body without id and meta, its links, and the times its meta derives from.
+type Entry struct {
+	ID      string
+	Body    json.RawMessage
+	Links   []store.Link
+	Created time.Time
+	Updated time.Time
+}

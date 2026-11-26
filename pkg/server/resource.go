@@ -106,7 +106,9 @@ func (c *Resource[T]) mount(s *Server, schemas core.Schemas) {
 	build := c.build
 	if build == nil {
 		build = func(*Resource[T]) Repository[T] {
-			return NewRepository[T](s.db.Store(c.Location(), schemas), schemas)
+			st := s.db.Store(c.Location(), schemas)
+			s.stores[c.name] = st
+			return NewRepository[T](st, schemas)
 		}
 	}
 	repository := build(c)

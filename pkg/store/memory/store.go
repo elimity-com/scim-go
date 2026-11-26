@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 
 	"github.com/supabase-community/scim-go/internal/decode"
@@ -66,6 +67,32 @@ func (s *Store) Delete(_ context.Context, id, version string) error {
 	s.db.inbound.relink(id, current.links, nil)
 	delete(s.db.entries, id)
 	s.db.entries.touch(append(s.db.detach(id), allTargets(current.links)...))
+	return nil
+}
+
+// Entries returns every resource of the store's resource type, in no particular order, e.g. to pass to Load of a store of a later Memory.
+// It must not run while the Memory serves requests.
+func (s *Store) Entries() []Entry {
+	var all []Entry
+	for id, e := range s.db.entries {
+		if e.schema == s.schemas.Base() {
+			all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
+		}
+	}
+	return all
+}
+
+// Load adds the given entries as resources of the store's resource type. It trusts them: it does not check uniqueness or links.
+// It must not run while the Memory serves requests. On an error, it leaves the entries before the failing one loaded.
+func (s *Store) Load(entries []Entry) error {
+	for _, e := range entries {
+		body, err := decode.Object(e.Body)
+		if err != nil {
+			return fmt.Errorf("memory: entry %s: %w", e.ID, err)
+		}
+		loaded := entry{schema: s.schemas.Base(), owner: s, body: body, raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
+		s.put(e.ID, s.db.entries[e.ID], loaded, indexKeysOf(loaded, s.Fields))
+	}
 	return nil
 }
 

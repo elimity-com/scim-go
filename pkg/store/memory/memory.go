@@ -1,13 +1,4 @@
 // Package memory provides the in-memory store a server keeps its resources in by default.
-//
-// Give a server a Memory with server.WithMemory to export and restore its resources. Export and Restore copy every resource with its
-// id, links and meta, so a caller can persist the resources elsewhere and bring them back after a restart:
-//
-//	m := memory.New()
-//	srv := server.New("/scim/v2", config, server.WithMemory(m), server.WithResource(users), server.WithResource(groups))
-//	err := m.Restore(loaded)
-//	...
-//	saved := m.Export()
 package memory
 
 import (
@@ -21,29 +12,24 @@ import (
 	"github.com/supabase-community/scim-go/pkg/store"
 )
 
-// Memory holds the resources of every resource type a server serves.
 type Memory struct {
 	mu      sync.Mutex
 	entries entries
 	unique  uniqueIndex
 	inbound inbound
-	stores  map[core.ResourceTypeName]*memoryStore
 }
 
-// New returns an empty Memory.
 func New() *Memory {
 	return &Memory{
 		entries: entries{},
 		unique:  uniqueIndex{},
 		inbound: inbound{},
-		stores:  map[core.ResourceTypeName]*memoryStore{},
 	}
 }
 
-// Store returns the store of one resource type. Restore resolves the resource type of an entry to the store most recently returned for it.
 func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
 	all := fields.New(schemas)
-	s := &memoryStore{
+	return &memoryStore{
 		db:         m,
 		location:   location,
 		schemas:    schemas,
@@ -51,10 +37,6 @@ func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
 		Fields:     all,
 		evaluator:  newEvaluator(all, schemas),
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.stores[schemas.Base().Name] = s
-	return s
 }
 
 // RFC 7643 Section 2.3.7: a service provider MAY enforce referential integrity.

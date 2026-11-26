@@ -11,7 +11,9 @@ func NewRepositoryIn[T core.Resource](db *memory.Memory, endpoint string, schema
 	return NewRepository[T](db.Store(endpoint, schemas), schemas)
 }
 
-var WithDatabase = WithMemory
+func WithDatabase(db *memory.Memory) Option[*Server] {
+	return func(s *Server) { s.db = db }
+}
 
 func NewMemoryRepository[T core.Resource](endpoint string, schemas core.Schemas) Repository[T] {
 	return NewRepository[T](memory.New().Store(endpoint, schemas), schemas)

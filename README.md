@@ -55,7 +55,7 @@ handler := server.New("/scim/v2", config,
 http.ListenAndServe(":8080", handler)
 ```
 
-Replace the in-memory store with `Resource.WithRepository`, or keep it and persist it with `server.WithMemory` and the `Export` and `Restore` methods of `pkg/store/memory`. Wrap business logic with `Resource.WithService`. See `ExampleNew` in `pkg/server` for a compiled version and `cmd/scimd/main.go` for a complete server.
+Replace the in-memory store with `Resource.WithRepository`. Wrap business logic with `Resource.WithService`. See `ExampleNew` in `pkg/server` for a compiled version and `cmd/scimd/main.go` for a complete server.
 
 ## Packages
 
@@ -64,7 +64,6 @@ Replace the in-memory store with `Resource.WithRepository`, or keep it and persi
 - `pkg/patch`: SCIM 2.0 patch support (RFC 7644 3.5.2).
 - `pkg/protocol`: SCIM 2.0 protocol types (RFC 7644): list responses, filters, and helpers for writing SCIM shaped HTTP responses.
 - `pkg/scimerrors`: SCIM 2.0 errors (RFC 7644): errors SCIM shaped HTTP responses.
-- `pkg/store/memory`: the in-memory store a server uses by default, with export and restore of its resources.
 - `pkg/scimtest`: checks a SCIM implementation against the JSON examples in RFC 7643.
 - `pkg/server`: SCIM 2.0 server components for building a customized SCIM Server. Experimental API.
 

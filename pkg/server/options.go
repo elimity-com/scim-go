@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/supabase-community/scim-go/pkg/core"
-	"github.com/supabase-community/scim-go/pkg/store/memory"
 )
 
 type Option[T any] func(T)
@@ -41,11 +40,6 @@ func MaxBodySize(n int64) Option[*Server] {
 // WithBaseURL sets the public base URL that each generated meta.location starts with, per RFC 7643, Section 3.1.
 func WithBaseURL(baseURL string) Option[*Server] {
 	return func(s *Server) { s.baseURL = baseURL }
-}
-
-// WithMemory keeps the resources of every resource type without its own repository in m, so they can be exported and restored.
-func WithMemory(m *memory.Memory) Option[*Server] {
-	return func(s *Server) { s.db = m }
 }
 
 func WithResource(resource Registration) Option[*Server] {

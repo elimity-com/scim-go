@@ -3,12 +3,21 @@ package memory_test
 import (
 	"testing"
 
+	"github.com/supabase-community/scim-go/pkg/core"
+	"github.com/supabase-community/scim-go/pkg/protocol"
 	"github.com/supabase-community/scim-go/pkg/scimtest"
-	"github.com/supabase-community/scim-go/pkg/store/memory"
+	"github.com/supabase-community/scim-go/pkg/server"
 )
 
+// TestConformance runs the conformance suite against a server, which keeps its resources in this package's store.
 func TestConformance(t *testing.T) {
 	t.Parallel()
-	client := scimtest.Serve(t, newHandler(memory.New()), basePath)
-	scimtest.NewSuite(client, scimtest.Strict()).Run(t)
+	config := core.NewServiceProviderConfig().Filtering(protocol.DefaultLimits.MaxCount).Sorting().Patching().Versioning()
+	handler := server.New("/scim/v2", config,
+		server.WithResource(server.
+			NewResource[*core.User]("User", "/Users", core.SchemaUser, core.UserAttributes()...).
+			WithExtension(core.SchemaEnterpriseUser, core.EnterpriseUserAttributes()...)),
+		server.WithResource(server.NewResource[*core.Group]("Group", "/Groups", core.SchemaGroup, core.GroupAttributes()...)),
+	)
+	scimtest.NewSuite(scimtest.Serve(t, handler, "/scim/v2"), scimtest.Strict()).Run(t)
 }

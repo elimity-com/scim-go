@@ -105,10 +105,15 @@ func (s *Store) verify(doc store.Document, before, next entry) ([]indexKey, erro
 }
 
 func (s *Store) commit(doc store.Document, before, next entry, keys []indexKey) {
-	s.db.unique.remove(indexKeysOf(before, s.Fields))
 	changed := changedTargets(before.links, doc.Links)
-	s.db.inbound.relink(doc.ID, before.links, next.links)
-	s.db.entries[doc.ID] = next
+	s.put(doc.ID, before, next, keys)
 	s.db.entries.touch(changed)
-	s.db.unique.add(keys, doc.ID)
+}
+
+// put stores next under id in place of before, keeping the indexes in step.
+func (s *Store) put(id string, before, next entry, keys []indexKey) {
+	s.db.unique.remove(indexKeysOf(before, s.Fields))
+	s.db.inbound.relink(id, before.links, next.links)
+	s.db.entries[id] = next
+	s.db.unique.add(keys, id)
 }

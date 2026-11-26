@@ -44,8 +44,8 @@ func TestLoadRestoresEntries(t *testing.T) {
 		assert.Equal(t, want.body, got.body, path)
 		assert.Equal(t, want.etag, got.etag, path)
 	}
-	assert.Equal(t, original.users.Entries(), restored.users.Entries())
-	assert.Equal(t, original.groups.Entries(), restored.groups.Entries())
+	assert.ElementsMatch(t, original.users.Entries(), restored.users.Entries())
+	assert.ElementsMatch(t, original.groups.Entries(), restored.groups.Entries())
 
 	assert.Equal(t, http.StatusConflict, send(t, restoredHandler, http.MethodPost, "/Users", `{"userName":"BJENSEN"}`).code)
 	require.Equal(t, http.StatusNoContent, send(t, restoredHandler, http.MethodDelete, "/Users/"+user, "").code)

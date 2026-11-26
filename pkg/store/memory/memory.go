@@ -51,14 +51,14 @@ func (m *Memory) Store(location string, schemas core.Schemas) *Store {
 	}
 }
 
-// Entries returns every resource of the store's resource type, e.g. to pass to Load of a store of a later Memory.
+// Entries returns every resource of the store's resource type, in no particular order, e.g. to pass to Load of a store of a later Memory.
 // It must not run while the Memory serves requests.
 func (s *Store) Entries() []Entry {
-	ids := s.db.entries.idsOf(s.schemas.Base())
-	all := make([]Entry, 0, len(ids))
-	for _, id := range ids {
-		e := s.db.entries[id]
-		all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
+	var all []Entry
+	for id, e := range s.db.entries {
+		if e.schema == s.schemas.Base() {
+			all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
+		}
 	}
 	return all
 }
@@ -76,9 +76,7 @@ func (s *Store) Load(entries []Entry) error {
 	}
 	for i, e := range entries {
 		loaded := entry{schema: s.schemas.Base(), owner: s, body: bodies[i], raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
-		s.db.entries[e.ID] = loaded
-		s.db.unique.add(indexKeysOf(loaded, s.Fields), e.ID)
-		s.db.inbound.relink(e.ID, nil, e.Links)
+		s.put(e.ID, s.db.entries[e.ID], loaded, indexKeysOf(loaded, s.Fields))
 	}
 	return nil
 }

@@ -13,11 +13,11 @@ import (
 func TestConformance(t *testing.T) {
 	t.Parallel()
 	config := core.NewServiceProviderConfig().Filtering(protocol.DefaultLimits.MaxCount).Sorting().Patching().Versioning()
-	handler := server.New("/scim/v2", config,
+	handler := server.New(basePath, config,
 		server.WithResource(server.
 			NewResource[*core.User]("User", "/Users", core.SchemaUser, core.UserAttributes()...).
 			WithExtension(core.SchemaEnterpriseUser, core.EnterpriseUserAttributes()...)),
 		server.WithResource(server.NewResource[*core.Group]("Group", "/Groups", core.SchemaGroup, core.GroupAttributes()...)),
 	)
-	scimtest.NewSuite(scimtest.Serve(t, handler, "/scim/v2"), scimtest.Strict()).Run(t)
+	scimtest.NewSuite(scimtest.Serve(t, handler, basePath), scimtest.Strict()).Run(t)
 }

@@ -10,7 +10,7 @@ import (
 
 type entry struct {
 	schema  *core.Schema
-	owner   *memoryStore
+	owner   *Store
 	body    core.Object
 	raw     json.RawMessage
 	links   []store.Link

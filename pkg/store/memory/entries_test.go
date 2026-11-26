@@ -24,17 +24,18 @@ type response struct {
 	body map[string]any
 }
 
-func TestNewFromEntriesRestoresEntries(t *testing.T) {
+type stores struct {
+	users, groups *memory.Store
+}
+
+func TestLoadRestoresEntries(t *testing.T) {
 	t.Parallel()
-	original := memory.New()
-	handler := newHandler(original)
+	handler, original := newHandler(t, stores{})
 	user := create(t, handler, "/Users", `{"userName":"bjensen"}`)
 	inner := create(t, handler, "/Groups", fmt.Sprintf(`{"displayName":"inner","members":[{"value":%q}]}`, user))
 	outer := create(t, handler, "/Groups", fmt.Sprintf(`{"displayName":"outer","members":[{"value":%q},{"value":%q}]}`, inner, user))
 
-	restored, err := memory.NewFromEntries(original.Entries())
-	require.NoError(t, err)
-	restoredHandler := newHandler(restored)
+	restoredHandler, restored := newHandler(t, original)
 
 	for _, path := range []string{"/Users/" + user, "/Groups/" + inner, "/Groups/" + outer} {
 		want := send(t, handler, http.MethodGet, path, "")
@@ -43,20 +44,22 @@ func TestNewFromEntriesRestoresEntries(t *testing.T) {
 		assert.Equal(t, want.body, got.body, path)
 		assert.Equal(t, want.etag, got.etag, path)
 	}
-	assert.ElementsMatch(t, original.Entries(), restored.Entries())
+	assert.Equal(t, original.users.Entries(), restored.users.Entries())
+	assert.Equal(t, original.groups.Entries(), restored.groups.Entries())
 
 	assert.Equal(t, http.StatusConflict, send(t, restoredHandler, http.MethodPost, "/Users", `{"userName":"BJENSEN"}`).code)
 	require.Equal(t, http.StatusNoContent, send(t, restoredHandler, http.MethodDelete, "/Users/"+user, "").code)
 	assert.NotContains(t, send(t, restoredHandler, http.MethodGet, "/Groups/"+inner, "").body, "members")
 }
 
-func TestNewFromEntriesRejectsABodyThatIsNotAnObject(t *testing.T) {
+func TestLoadRejectsABodyThatIsNotAnObject(t *testing.T) {
 	t.Parallel()
-	entries := []memory.Entry{{ID: "1", ResourceType: "User", Body: json.RawMessage(`[]`)}}
+	users := memory.New().Store(basePath+"/Users", core.Schemas{core.NewSchema(core.SchemaUser).WithName("User").With(core.UserAttributes()...)})
 
-	_, err := memory.NewFromEntries(entries)
+	err := users.Load([]memory.Entry{{ID: "1", Body: json.RawMessage(`[]`)}})
 
 	require.Error(t, err)
+	assert.Empty(t, users.Entries())
 }
 
 func create(t *testing.T, handler http.Handler, path, body string) string {
@@ -68,21 +71,32 @@ func create(t *testing.T, handler http.Handler, path, body string) string {
 	return id
 }
 
-func newHandler(m *memory.Memory) http.Handler {
-	return server.New(basePath, core.NewServiceProviderConfig(),
+// newHandler returns a handler on a new Memory whose stores hold the entries of the given ones, if any.
+func newHandler(t *testing.T, from stores) (http.Handler, stores) {
+	t.Helper()
+	m := memory.New()
+	var created stores
+	handler := server.New(basePath, core.NewServiceProviderConfig(),
 		server.WithResource(server.
 			NewResource[*core.User]("User", "/Users", core.SchemaUser, core.UserAttributes()...).
-			WithRepositoryFunc(repository[*core.User](m))),
+			WithRepositoryFunc(repository[*core.User](t, m, from.users, &created.users))),
 		server.WithResource(server.
 			NewResource[*core.Group]("Group", "/Groups", core.SchemaGroup, core.GroupAttributes()...).
-			WithRepositoryFunc(repository[*core.Group](m))),
+			WithRepositoryFunc(repository[*core.Group](t, m, from.groups, &created.groups))),
 	)
+	return handler, created
 }
 
-func repository[T core.Resource](m *memory.Memory) func(*server.Resource[T]) server.Repository[T] {
+func repository[T core.Resource](t *testing.T, m *memory.Memory, from *memory.Store, created **memory.Store) func(*server.Resource[T]) server.Repository[T] {
+	t.Helper()
 	return func(resource *server.Resource[T]) server.Repository[T] {
 		schemas := resource.Schemas()
-		return server.NewRepository[T](m.Store(resource.Location(), schemas), schemas)
+		s := m.Store(resource.Location(), schemas)
+		if from != nil {
+			require.NoError(t, s.Load(from.Entries()))
+		}
+		*created = s
+		return server.NewRepository[T](s, schemas)
 	}
 }
 

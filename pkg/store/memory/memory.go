@@ -20,17 +20,15 @@ type Memory struct {
 	entries entries
 	unique  uniqueIndex
 	inbound inbound
-	pending map[core.ResourceTypeName]map[string]entry
 }
 
-// Entry is one resource of a Memory: its body without id and meta, its links, and the times its meta derives from.
+// Entry is one resource of a Store: its body without id and meta, its links, and the times its meta derives from.
 type Entry struct {
-	ID           string
-	ResourceType core.ResourceTypeName
-	Body         json.RawMessage
-	Links        []store.Link
-	Created      time.Time
-	Updated      time.Time
+	ID      string
+	Body    json.RawMessage
+	Links   []store.Link
+	Created time.Time
+	Updated time.Time
 }
 
 func New() *Memory {
@@ -38,39 +36,12 @@ func New() *Memory {
 		entries: entries{},
 		unique:  uniqueIndex{},
 		inbound: inbound{},
-		pending: map[core.ResourceTypeName]map[string]entry{},
 	}
 }
 
-// NewFromEntries returns a Memory that holds the given entries, e.g. those Entries returned for an earlier Memory.
-// It trusts the entries: it does not check uniqueness or links. An entry joins the Memory when Store is called for its resource type.
-func NewFromEntries(entries []Entry) (*Memory, error) {
-	m := New()
-	for _, e := range entries {
-		body, err := decode.Object(e.Body)
-		if err != nil {
-			return nil, fmt.Errorf("memory: entry %s: %w", e.ID, err)
-		}
-		if m.pending[e.ResourceType] == nil {
-			m.pending[e.ResourceType] = map[string]entry{}
-		}
-		m.pending[e.ResourceType][e.ID] = entry{body: body, raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
-	}
-	return m, nil
-}
-
-// Entries returns every resource of the Memory. It must not run while the Memory serves requests.
-func (m *Memory) Entries() []Entry {
-	all := make([]Entry, 0, len(m.entries))
-	for id, e := range m.entries {
-		all = append(all, Entry{ID: id, ResourceType: e.schema.Name, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
-	}
-	return all
-}
-
-func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
+func (m *Memory) Store(location string, schemas core.Schemas) *Store {
 	all := fields.New(schemas)
-	s := &memoryStore{
+	return &Store{
 		db:         m,
 		location:   location,
 		schemas:    schemas,
@@ -78,20 +49,38 @@ func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
 		Fields:     all,
 		evaluator:  newEvaluator(all, schemas),
 	}
-	m.attach(s)
-	return s
 }
 
-// attach adds the pending entries of the store's resource type, which NewFromEntries could not add without the store's schemas.
-func (m *Memory) attach(s *memoryStore) {
-	base := s.schemas.Base()
-	for id, e := range m.pending[base.Name] {
-		e.schema, e.owner = base, s
-		m.entries[id] = e
-		m.unique.add(indexKeysOf(e, s.Fields), id)
-		m.inbound.relink(id, nil, e.links)
+// Entries returns every resource of the store's resource type, e.g. to pass to Load of a store of a later Memory.
+// It must not run while the Memory serves requests.
+func (s *Store) Entries() []Entry {
+	ids := s.db.entries.idsOf(s.schemas.Base())
+	all := make([]Entry, 0, len(ids))
+	for _, id := range ids {
+		e := s.db.entries[id]
+		all = append(all, Entry{ID: id, Body: e.raw, Links: e.links, Created: e.created, Updated: e.updated})
 	}
-	delete(m.pending, base.Name)
+	return all
+}
+
+// Load adds the given entries as resources of the store's resource type. It trusts them: it does not check uniqueness or links.
+// It must not run while the Memory serves requests.
+func (s *Store) Load(entries []Entry) error {
+	bodies := make([]core.Object, len(entries))
+	for i, e := range entries {
+		body, err := decode.Object(e.Body)
+		if err != nil {
+			return fmt.Errorf("memory: entry %s: %w", e.ID, err)
+		}
+		bodies[i] = body
+	}
+	for i, e := range entries {
+		loaded := entry{schema: s.schemas.Base(), owner: s, body: bodies[i], raw: e.Body, links: e.Links, created: e.Created, updated: e.Updated}
+		s.db.entries[e.ID] = loaded
+		s.db.unique.add(indexKeysOf(loaded, s.Fields), e.ID)
+		s.db.inbound.relink(e.ID, nil, e.Links)
+	}
+	return nil
 }
 
 // RFC 7643 Section 2.3.7: a service provider MAY enforce referential integrity.

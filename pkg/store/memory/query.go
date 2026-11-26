@@ -14,7 +14,7 @@ import (
 )
 
 type query struct {
-	*memoryStore
+	*Store
 	request *protocol.SearchRequest
 }
 

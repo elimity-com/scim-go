@@ -16,6 +16,7 @@ type Memory struct {
 	entries entries
 	unique  uniqueIndex
 	inbound inbound
+	stores  map[core.ResourceTypeName]*memoryStore
 }
 
 func New() *Memory {
@@ -23,12 +24,14 @@ func New() *Memory {
 		entries: entries{},
 		unique:  uniqueIndex{},
 		inbound: inbound{},
+		stores:  map[core.ResourceTypeName]*memoryStore{},
 	}
 }
 
+// Store returns the store of one resource type. Restore resolves the resource type of an entry to the store most recently returned for it.
 func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
 	all := fields.New(schemas)
-	return &memoryStore{
+	s := &memoryStore{
 		db:         m,
 		location:   location,
 		schemas:    schemas,
@@ -36,6 +39,10 @@ func (m *Memory) Store(location string, schemas core.Schemas) store.Store {
 		Fields:     all,
 		evaluator:  newEvaluator(all, schemas),
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.stores[schemas.Base().Name] = s
+	return s
 }
 
 // RFC 7643 Section 2.3.7: a service provider MAY enforce referential integrity.
